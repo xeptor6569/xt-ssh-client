@@ -23,7 +23,8 @@ config.resolver.extraNodeModules = {
   'path': path.resolve(__dirname, 'lib/ssh/polyfills-path.js'),
   'fs': path.resolve(__dirname, 'lib/ssh/polyfills-fs.js'),
   'child_process': path.resolve(__dirname, 'lib/ssh/polyfills-child_process.js'),
-  'crypto': path.resolve(__dirname, 'lib/ssh/polyfills-crypto.js'),
+  // Use react-native-quick-crypto for native crypto implementation
+  'crypto': 'react-native-quick-crypto',
   'zlib': path.resolve(__dirname, 'lib/ssh/polyfills-zlib.js'),
   'dns': path.resolve(__dirname, 'lib/ssh/polyfills-dns.js'),
   'assert': path.resolve(__dirname, 'lib/ssh/polyfills-assert.js'),
@@ -46,6 +47,19 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       filePath: path.resolve(__dirname, 'lib/ssh/polyfills-cpu-features.js'),
       type: 'sourceFile',
     };
+  }
+  
+  // Resolve crypto to react-native-quick-crypto (handled in extraNodeModules, but ensure it works)
+  if (moduleName === 'crypto') {
+    try {
+      const cryptoPath = require.resolve('react-native-quick-crypto', { paths: [__dirname] });
+      return {
+        filePath: cryptoPath,
+        type: 'sourceFile',
+      };
+    } catch (e) {
+      // Fallback to default resolver if quick-crypto not found
+    }
   }
   
   // Use default resolver for other modules
