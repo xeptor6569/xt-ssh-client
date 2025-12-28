@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <style>body { margin: 0; background: #000; overflow: hidden; }</style>
+</head>
+<body>
+  <div id="terminal"></div>
+  <script>
+    var term = new Terminal({ theme: { background: '#000000' } });
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(document.getElementById('terminal'));
+    fitAddon.fit();
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      fitAddon.fit();
+    });
+
+    // 1. Send keystrokes to React Native
+    term.onData(data => {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'input', data: data }));
+      }
+    });
+
+    // 2. Function to receive data from React Native (SSH output)
+    // This function is called via injectJavaScript from React Native
+    window.writeTerminalData = function(data) {
+      if (data && typeof data === 'string') {
+        term.write(data);
+      }
+    };
+
+    // Also listen for message events as fallback
+    window.addEventListener('message', function(event) {
+      if (event.data && typeof event.data === 'string') {
+        term.write(event.data);
+      }
+    });
+  </script>
+</body>
+</html>
