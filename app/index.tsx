@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,9 +12,9 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Host, AuthType } from '../lib/types/host';
+import { Host, AuthType, HostCredentials } from '../lib/types/host';
 import { getAllHosts, saveHost, deleteHost, createHostId } from '../lib/storage/hostStorage';
-import { HostCredentials } from '../lib/types/host';
+import { getHostCredentials } from '../lib/storage/secureStorage';
 
 export default function HostListScreen() {
   const router = useRouter();
@@ -95,12 +95,16 @@ export default function HostListScreen() {
       return;
     }
 
-    if (formData.authType === 'password' && !formData.password) {
-      Alert.alert('Error', 'Please enter a password');
-      return;
-    }
+    const existingCredentials = editingHost
+      ? await getHostCredentials(editingHost.id)
+      : null;
 
-    if (formData.authType === 'key' && !formData.privateKey) {
+    if (formData.authType === 'password') {
+      if (!formData.password && !existingCredentials?.password) {
+        Alert.alert('Error', 'Please enter a password');
+        return;
+      }
+    } else if (!formData.privateKey && !existingCredentials?.privateKey) {
       Alert.alert('Error', 'Please enter a private key');
       return;
     }
@@ -120,11 +124,17 @@ export default function HostListScreen() {
       authType: formData.authType,
     };
 
-    const credentials: HostCredentials = {
-      password: formData.authType === 'password' ? formData.password : undefined,
-      privateKey: formData.authType === 'key' ? formData.privateKey : undefined,
-      passphrase: formData.authType === 'key' && formData.passphrase ? formData.passphrase : undefined,
-    };
+    const credentials: HostCredentials =
+      formData.authType === 'password'
+        ? {
+            password: formData.password || existingCredentials?.password,
+          }
+        : {
+            privateKey: formData.privateKey || existingCredentials?.privateKey,
+            passphrase:
+              formData.passphrase ||
+              (!formData.privateKey ? existingCredentials?.passphrase : undefined),
+          };
 
     await saveHost(host, credentials);
     setModalVisible(false);
