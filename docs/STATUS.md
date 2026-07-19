@@ -31,8 +31,9 @@ Not a hosted web SSH gateway.
 | Tests | None yet |
 | Bundle IDs | Still `com.anonymous.*` |
 
-**Branch / PR:** `cursor/reassess-refactor-7105` → [PR #1](https://github.com/xeptor6569/xt-ssh-client/pull/1)  
-**Repo:** [xeptor6569/xt-ssh-client](https://github.com/xeptor6569/xt-ssh-client)
+**Repo:** [xeptor6569/xt-ssh-client](https://github.com/xeptor6569/xt-ssh-client)  
+**Latest merged work:** [PR #1](https://github.com/xeptor6569/xt-ssh-client/pull/1) (refactor) on `main`  
+**Docs PR branch:** `cursor/docs-status-readme-7105`
 
 ### Architecture (kept)
 
@@ -78,16 +79,14 @@ Append newest entries at the top.
 ### 2026-07-19 — Cloud agent “Current project status”
 
 - **Run:** https://cursor.com/agents/bc-019f77ed-db4d-709a-801e-03427b8b7105  
-- **Branch:** `cursor/reassess-refactor-7105`  
-- **PR:** https://github.com/xeptor6569/xt-ssh-client/pull/1  
+- **Refactor PR:** https://github.com/xeptor6569/xt-ssh-client/pull/1 (**merged**)  
+- **Docs branch:** `cursor/docs-status-readme-7105`  
 
 **Done**
 
 - Progress reassessment of `main` (prototype from Dec 2025 commits)
-- Refactor: remove dead `App.tsx`, duplicate polyfills, unused deps (`@xterm` npm, zustand, bad quick-crypto pin)
-- Single `TcpSocketWrapper`; slim global polyfills; fix native socket `connect` API usage
-- Host edit keeps existing credentials when fields left blank
-- Direction confirmed: stay on-device; borrow ideas from webssh2 only; skip webgl for now
+- Refactor merged: remove dead `App.tsx`, duplicate polyfills, unused deps; single `TcpSocketWrapper`; host edit keeps credentials
+- Direction confirmed: stay on-device; borrow ideas from webssh2 only; defer webgl
 - Added this status file + README
 
 **Open**
