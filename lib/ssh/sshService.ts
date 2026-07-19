@@ -1,21 +1,21 @@
-// Import polyfills first to set up global environment
 import './polyfills';
 import { Client } from 'ssh2';
-import { net, TcpSocketWrapper } from './polyfills';
+import { TcpSocketWrapper } from './tcpSocket';
 import { SSHConnectionOptions, ConnectionStatus } from './types';
+
+type DataCallback = (data: string) => void;
+type ErrorCallback = (error: Error) => void;
+type StatusCallback = (status: ConnectionStatus) => void;
 
 export class SSHService {
   private client: Client | null = null;
   private stream: any = null;
   private socket: TcpSocketWrapper | null = null;
   private status: ConnectionStatus = 'disconnected';
-  private dataCallbacks: Array<(data: string) => void> = [];
-  private errorCallbacks: Array<(error: Error) => void> = [];
-  private statusCallbacks: Array<(status: ConnectionStatus) => void> = [];
+  private dataCallbacks: DataCallback[] = [];
+  private errorCallbacks: ErrorCallback[] = [];
+  private statusCallbacks: StatusCallback[] = [];
 
-  /**
-   * Connect to SSH server
-   */
   async connect(options: SSHConnectionOptions): Promise<void> {
     if (this.status === 'connecting' || this.status === 'connected') {
       throw new Error('Already connected or connecting');
@@ -25,23 +25,18 @@ export class SSHService {
     this.notifyStatusChange();
 
     return new Promise((resolve, reject) => {
-      // Create TCP socket connection first
       const socket = new TcpSocketWrapper();
       this.socket = socket;
 
-      // Wait for socket to connect
       socket.once('connect', () => {
-        // Create SSH client
         this.client = new Client();
 
-        // Configure connection options
-        const connectConfig: any = {
+        const connectConfig: Record<string, unknown> = {
           username: options.username,
           readyTimeout: options.readyTimeout || 20000,
-          sock: socket, // Pass the connected socket
+          sock: socket,
         };
 
-        // Add authentication
         if (options.privateKey) {
           connectConfig.privateKey = options.privateKey;
           if (options.passphrase) {
@@ -55,13 +50,11 @@ export class SSHService {
           return;
         }
 
-        // Handle SSH connection events
         this.client.on('ready', () => {
           this.status = 'connected';
           this.notifyStatusChange();
 
-          // Request a shell
-          this.client!.shell((err, stream) => {
+          this.client!.shell((err: Error | undefined, stream: any) => {
             if (err) {
               this.status = 'error';
               this.notifyStatusChange();
@@ -72,10 +65,8 @@ export class SSHService {
 
             this.stream = stream;
 
-            // Pipe stream data to callbacks
             stream.on('data', (data: Buffer) => {
-              const dataStr = data.toString();
-              this.notifyData(dataStr);
+              this.notifyData(data.toString());
             });
 
             stream.on('close', () => {
@@ -84,8 +75,7 @@ export class SSHService {
             });
 
             stream.stderr.on('data', (data: Buffer) => {
-              const dataStr = data.toString();
-              this.notifyData(dataStr);
+              this.notifyData(data.toString());
             });
 
             resolve();
@@ -99,7 +89,6 @@ export class SSHService {
           reject(err);
         });
 
-        // Connect SSH client over the socket
         this.client.connect(connectConfig);
       });
 
@@ -110,14 +99,10 @@ export class SSHService {
         reject(err);
       });
 
-      // Start TCP connection
       socket.connect(options.port, options.hostname);
     });
   }
 
-  /**
-   * Disconnect from SSH server
-   */
   disconnect(): void {
     if (this.stream) {
       this.stream.end();
@@ -138,9 +123,6 @@ export class SSHService {
     this.notifyStatusChange();
   }
 
-  /**
-   * Write data to SSH stream
-   */
   write(data: string): void {
     if (this.stream && this.status === 'connected') {
       this.stream.write(data);
@@ -149,121 +131,61 @@ export class SSHService {
     }
   }
 
-  /**
-   * Execute a command and return output
-   */
-  async executeCommand(command: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      if (!this.client || this.status !== 'connected') {
-        reject(new Error('Not connected'));
-        return;
-      }
-
-      let output = '';
-      let errorOutput = '';
-
-      this.client.exec(command, (err, stream) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-
-        stream.on('data', (data: Buffer) => {
-          output += data.toString();
-        });
-
-        stream.stderr.on('data', (data: Buffer) => {
-          errorOutput += data.toString();
-        });
-
-        stream.on('close', (code: number) => {
-          if (code !== 0) {
-            reject(new Error(`Command failed with code ${code}: ${errorOutput}`));
-          } else {
-            resolve(output);
-          }
-        });
-      });
-    });
-  }
-
-  /**
-   * Register callback for data events
-   */
-  onData(callback: (data: string) => void): void {
+  onData(callback: DataCallback): void {
     this.dataCallbacks.push(callback);
   }
 
-  /**
-   * Remove data callback
-   */
-  offData(callback: (data: string) => void): void {
-    this.dataCallbacks = this.dataCallbacks.filter(cb => cb !== callback);
+  offData(callback: DataCallback): void {
+    this.dataCallbacks = this.dataCallbacks.filter((cb) => cb !== callback);
   }
 
-  /**
-   * Register callback for error events
-   */
-  onError(callback: (error: Error) => void): void {
+  onError(callback: ErrorCallback): void {
     this.errorCallbacks.push(callback);
   }
 
-  /**
-   * Remove error callback
-   */
-  offError(callback: (error: Error) => void): void {
-    this.errorCallbacks = this.errorCallbacks.filter(cb => cb !== callback);
+  offError(callback: ErrorCallback): void {
+    this.errorCallbacks = this.errorCallbacks.filter((cb) => cb !== callback);
   }
 
-  /**
-   * Register callback for status changes
-   */
-  onStatusChange(callback: (status: ConnectionStatus) => void): void {
+  onStatusChange(callback: StatusCallback): void {
     this.statusCallbacks.push(callback);
   }
 
-  /**
-   * Remove status change callback
-   */
-  offStatusChange(callback: (status: ConnectionStatus) => void): void {
-    this.statusCallbacks = this.statusCallbacks.filter(cb => cb !== callback);
+  offStatusChange(callback: StatusCallback): void {
+    this.statusCallbacks = this.statusCallbacks.filter((cb) => cb !== callback);
   }
 
-  /**
-   * Get current connection status
-   */
   getStatus(): ConnectionStatus {
     return this.status;
   }
 
   private notifyData(data: string): void {
-    this.dataCallbacks.forEach(callback => {
+    for (const callback of this.dataCallbacks) {
       try {
         callback(data);
       } catch (error) {
         console.error('Error in data callback:', error);
       }
-    });
+    }
   }
 
   private notifyError(error: Error): void {
-    this.errorCallbacks.forEach(callback => {
+    for (const callback of this.errorCallbacks) {
       try {
         callback(error);
       } catch (err) {
         console.error('Error in error callback:', err);
       }
-    });
+    }
   }
 
   private notifyStatusChange(): void {
-    this.statusCallbacks.forEach(callback => {
+    for (const callback of this.statusCallbacks) {
       try {
         callback(this.status);
       } catch (error) {
         console.error('Error in status callback:', error);
       }
-    });
+    }
   }
 }
-

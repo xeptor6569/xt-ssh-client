@@ -1,179 +1,171 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  Platform,
+} from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Host } from '../../lib/types/host';
-import { useConnectionStore } from '../../lib/store/connectionStore';
+import { getHostById } from '../../lib/storage/hostStorage';
+import { getHostCredentials } from '../../lib/storage/secureStorage';
+type SSHServiceConstructor = typeof import('../../lib/ssh/sshService').SSHService;
+type SSHServiceInstance = InstanceType<SSHServiceConstructor>;
 
-// Only import native modules on native platforms
-let SSHService: any;
-let getHostById: any;
-let getHostCredentials: any;
-
+// Native-only: avoid pulling react-native-tcp-socket into the web bundle.
+let SSHService: SSHServiceConstructor | null = null;
 if (Platform.OS !== 'web') {
   SSHService = require('../../lib/ssh/sshService').SSHService;
-  getHostById = require('../../lib/storage/hostStorage').getHostById;
-  getHostCredentials = require('../../lib/storage/secureStorage').getHostCredentials;
 }
 
 const terminalHTML = require('../../assets/terminal.html');
 
+function escapeForInjectedJs(data: string): string {
+  return data
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/`/g, '\\`')
+    .replace(/\$/g, '\\$')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
+}
+
 export default function TerminalScreen() {
-  const { id } = useLocalSearchParams();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const webViewRef = useRef<WebView>(null);
-  const sshServiceRef = useRef<SSHService | null>(null);
+  const sshServiceRef = useRef<SSHServiceInstance | null>(null);
   const [host, setHost] = useState<Host | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { setConnection, setError: setConnectionError, disconnect } = useConnectionStore();
 
   useEffect(() => {
-    if (Platform.OS === 'web') {
+    if (Platform.OS === 'web' || !SSHService) {
       setError('SSH connections are not supported on web. Please use iOS or Android.');
       setLoading(false);
       return;
     }
-    
-    initializeConnection();
+
+    let cancelled = false;
+    const Service = SSHService;
+
+    const connect = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const hostId = Array.isArray(id) ? id[0] : id;
+        const loadedHost = await getHostById(hostId);
+        if (!loadedHost) {
+          throw new Error('Host not found');
+        }
+        if (cancelled) return;
+
+        setHost(loadedHost);
+
+        const credentials = await getHostCredentials(hostId);
+        if (!credentials) {
+          throw new Error('Credentials not found');
+        }
+        if (cancelled) return;
+
+        const sshService = new Service();
+        sshServiceRef.current = sshService;
+
+        sshService.onData((data: string) => {
+          webViewRef.current?.injectJavaScript(`
+            (function() {
+              if (window.writeTerminalData) {
+                window.writeTerminalData('${escapeForInjectedJs(data)}');
+              }
+            })();
+            true;
+          `);
+        });
+
+        sshService.onError((err: Error) => {
+          if (cancelled) return;
+          setError(err.message);
+          setLoading(false);
+          Alert.alert('Connection Error', err.message, [
+            { text: 'OK', onPress: () => router.back() },
+          ]);
+        });
+
+        sshService.onStatusChange((status) => {
+          if (cancelled) return;
+          if (status === 'connected' || status === 'error') {
+            setLoading(false);
+          }
+        });
+
+        await sshService.connect({
+          hostname: loadedHost.hostname,
+          port: loadedHost.port,
+          username: loadedHost.username,
+          password: credentials.password,
+          privateKey: credentials.privateKey,
+          passphrase: credentials.passphrase,
+          readyTimeout: 20000,
+        });
+      } catch (err: unknown) {
+        if (cancelled) return;
+        const errorMessage =
+          err instanceof Error ? err.message : 'Failed to connect';
+        setError(errorMessage);
+        setLoading(false);
+        Alert.alert('Connection Error', errorMessage, [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      }
+    };
+
+    connect();
 
     return () => {
-      // Cleanup on unmount
+      cancelled = true;
       if (sshServiceRef.current) {
         sshServiceRef.current.disconnect();
         sshServiceRef.current = null;
       }
-      disconnect();
     };
-  }, [id]);
+  }, [id, router]);
 
-  const initializeConnection = async () => {
-    if (Platform.OS === 'web') {
-      setError('SSH connections are not supported on web platform.');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Load host from storage
-      const hostId = Array.isArray(id) ? id[0] : id;
-      const loadedHost = await getHostById(hostId);
-      
-      if (!loadedHost) {
-        throw new Error('Host not found');
-      }
-
-      setHost(loadedHost);
-
-      // Load credentials
-      const credentials = await getHostCredentials(hostId);
-      if (!credentials) {
-        throw new Error('Credentials not found');
-      }
-
-      // Create SSH service
-      const sshService = new SSHService();
-      sshServiceRef.current = sshService;
-
-      // Set up data handler
-      sshService.onData((data: string) => {
-        // Send data to WebView by calling the global function
-        if (webViewRef.current) {
-          // Escape the data for JavaScript string
-          const escapedData = data
-            .replace(/\\/g, '\\\\')
-            .replace(/'/g, "\\'")
-            .replace(/`/g, '\\`')
-            .replace(/\$/g, '\\$')
-            .replace(/\n/g, '\\n')
-            .replace(/\r/g, '\\r');
-          webViewRef.current.injectJavaScript(`
-            (function() {
-              if (window.writeTerminalData) {
-                window.writeTerminalData('${escapedData}');
-              }
-            })();
-            true; // Required for iOS
-          `);
-        }
-      });
-
-      // Set up error handler
-      sshService.onError((err: Error) => {
-        setError(err.message);
-        setConnectionError(err.message);
-        setLoading(false);
-        Alert.alert('Connection Error', err.message, [
-          { text: 'OK', onPress: () => router.back() },
-        ]);
-      });
-
-      // Set up status change handler
-      sshService.onStatusChange((status) => {
-        setConnection(hostId, status);
-        if (status === 'connected') {
-          setLoading(false);
-        } else if (status === 'error') {
-          setLoading(false);
-        }
-      });
-
-      // Connect to SSH server
-      await sshService.connect({
-        hostname: loadedHost.hostname,
-        port: loadedHost.port,
-        username: loadedHost.username,
-        password: credentials.password,
-        privateKey: credentials.privateKey,
-        passphrase: credentials.passphrase,
-        readyTimeout: 20000,
-      });
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to connect';
-      setError(errorMessage);
-      setConnectionError(errorMessage);
-      setLoading(false);
-      Alert.alert('Connection Error', errorMessage, [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    }
-  };
-
-  const handleWebViewMessage = (event: any) => {
+  const handleWebViewMessage = (event: { nativeEvent: { data: string } }) => {
     try {
       const payload = JSON.parse(event.nativeEvent.data);
-      
-      if (payload.type === 'input') {
-        // User typed something. Send it to the SSH Socket.
-        if (sshServiceRef.current) {
-          sshServiceRef.current.write(payload.data);
-        }
+      if (payload.type === 'input' && sshServiceRef.current) {
+        sshServiceRef.current.write(payload.data);
       }
     } catch (err) {
       console.error('Error handling WebView message:', err);
     }
   };
 
-  if (loading) {
+  if (Platform.OS === 'web' || error) {
     return (
       <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4a9eff" />
-          <Text style={styles.loadingText}>Connecting to {host?.name || 'host'}...</Text>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Connection Error</Text>
+          <Text style={styles.errorMessage}>
+            {error || 'SSH is not available on this platform.'}
+          </Text>
         </View>
       </View>
     );
   }
 
-  if (error) {
+  if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Connection Error</Text>
-          <Text style={styles.errorMessage}>{error}</Text>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4a9eff" />
+          <Text style={styles.loadingText}>
+            Connecting to {host?.name || 'host'}...
+          </Text>
         </View>
       </View>
     );
@@ -185,8 +177,8 @@ export default function TerminalScreen() {
       source={terminalHTML}
       onMessage={handleWebViewMessage}
       style={styles.webview}
-      javaScriptEnabled={true}
-      domStorageEnabled={true}
+      javaScriptEnabled
+      domStorageEnabled
       originWhitelist={['*']}
     />
   );
@@ -231,4 +223,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-
