@@ -1,6 +1,8 @@
 # xt-ssh-client
 
-Expo (React Native) SSH client for iOS and Android. SSH runs **on device** via `ssh2` over `react-native-tcp-socket`, with an xterm.js terminal in a WebView.
+**Expo / React Native** SSH client for **iOS and Android**. SSH runs on device via `ssh2` over `react-native-tcp-socket`, with an xterm.js terminal in a native WebView.
+
+Web / PWA is **not** a target for SSH (browsers can’t do raw SSH TCP without a separate gateway). See [docs/STATUS.md](docs/STATUS.md).
 
 > Rolling status, decisions, and next steps: **[docs/STATUS.md](docs/STATUS.md)**
 
@@ -12,6 +14,8 @@ Expo (React Native) SSH client for iOS and Android. SSH runs **on device** via `
 - Expo Router navigation + EAS build profiles
 
 ## Stack
+
+Targeted at **Expo native** (dev client / EAS), not Expo web:
 
 | Layer | Choice |
 | --- | --- |
@@ -69,9 +73,11 @@ SSH is **not supported on web** (no native TCP). The UI will say so.
 
 ## Direction (short)
 
-Stay an **on-device** SSH client. Borrow UX ideas from projects like webssh2; do **not** adopt a WebSocket→SSH gateway architecture.
+- **Primary:** Expo native iOS/Android, on-device SSH  
+- **Not v1:** PWA / Expo web SSH (would need a separate gateway product)  
+- Borrow UX ideas from projects like webssh2; do **not** adopt that gateway as the app base  
 
-Priority next: get a real device/simulator session working, then PTY resize, safer WebView data bridging, and connection hardening.
+Priority next: prove a real device/simulator session, then PTY resize, safer WebView data bridging, and connection hardening.
 
 Details and agent history live in [docs/STATUS.md](docs/STATUS.md).
 

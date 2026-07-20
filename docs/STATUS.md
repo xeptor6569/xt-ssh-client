@@ -2,19 +2,41 @@
 
 Living notes for project direction, decisions, and agent work.  
 **Update this file** when direction changes or a meaningful agent pass lands.  
-Last updated: **2026-07-19**
+Last updated: **2026-07-20**
 
 ---
 
 ## North star
 
-Build a native **iOS/Android SSH client** where:
+Build a **React Native (Expo) SSH client for iOS and Android** where:
 
 - The phone opens TCP + SSH directly to the host
 - Credentials stay on device (SecureStore)
-- The terminal UX is solid (xterm in WebView is fine for now)
+- The terminal UX is solid (xterm in a native WebView is fine for now)
 
+Primary target is **Expo native apps**, not a browser PWA.  
 Not a hosted web SSH gateway.
+
+---
+
+## Platform targeting
+
+| Surface | Role | SSH? |
+| --- | --- | --- |
+| **iOS / Android (Expo)** | Primary product | Yes — on-device `ssh2` + TCP |
+| **Expo web / PWA** | Out of scope for v1 | No — browsers cannot open raw SSH TCP |
+
+**Stack should be optimized for Expo native** (dev client, EAS, native modules). Do not bend the SSH path to “also work as a PWA.”
+
+### Can we do both?
+
+Not as one SSH implementation.
+
+- A PWA cannot speak SSH the way this app does; it would need a **separate backend gateway** (WebSocket → SSH), which we already rejected as the product base.
+- Sharing UI/theme/host-list types with a future web app is possible later, but the **connection layer must stay native-only**.
+- If a web/PWA client is wanted someday, treat it as a **separate product/surface** (own deploy, own trust model), not a mode of this app.
+
+For now: ignore PWA; ship iOS/Android.
 
 ---
 
@@ -26,7 +48,7 @@ Not a hosted web SSH gateway.
 | Secure credentials | Working (SecureStore) |
 | SSH shell session | Implemented; **needs device verification** |
 | Terminal (xterm WebView) | Basic; CDN-loaded xterm + FitAddon |
-| Web platform | Explicitly unsupported for SSH |
+| Web / PWA | Unsupported for SSH (by design) |
 | Native projects (`ios/` / `android/`) | Not checked in; generate via prebuild/EAS |
 | Tests | None yet |
 | Bundle IDs | Still `com.anonymous.*` |
@@ -52,7 +74,10 @@ Metro maps Node built-ins (`net`, `stream`, `crypto`, …) to polyfills / `react
 
 | Decision | Choice | Why |
 | --- | --- | --- |
-| Product shape | On-device client | Matches mobile SSH apps; creds stay local |
+| Primary stack | **Expo / React Native (iOS + Android)** | Native TCP + SecureStore; matches mobile SSH apps |
+| PWA / Expo web SSH | **Not in scope** | No raw TCP SSH in the browser without a gateway |
+| Dual product (native + PWA) | **Separate later, if ever** | Would need a different connection architecture; don’t dilute v1 |
+| Product shape | On-device client | Creds stay local; no required backend |
 | webssh2 as base | **No** | webssh2 is a Socket.IO → SSH **server gateway**, not an RN client lib |
 | Borrow from webssh2 | Ideas only | Terminal UX, resize/PTY, auth flows, TOFU — not the proxy model |
 | Terminal renderer | DOM for now | `@xterm/addon-webgl` deferred; try canvas later if needed; fallback required on mobile WebView |
@@ -63,18 +88,25 @@ Metro maps Node built-ins (`net`, `stream`, `crypto`, …) to polyfills / `react
 
 ## Next (priority order)
 
-1. **Prove a live session** — prebuild/EAS dev client; password + key auth on simulator/device  
-2. **Terminal correctness** — PTY/`window-change` on FitAddon resize; safer RN ↔ WebView data path (avoid brittle `injectJavaScript` string escaping)  
+1. **Prove a live session** — prebuild/EAS **dev client** on simulator/device; password + key auth  
+2. **Terminal correctness** — PTY/`window-change` on FitAddon resize; safer RN ↔ WebView data path  
 3. **Connection hardening** — host key / TOFU, reconnect, keep-alive, clearer errors  
-4. **App hygiene** — real bundle IDs, icons, optional local xterm assets, light tests for storage/SSH helpers  
+4. **App hygiene** — real bundle IDs, icons, optional local xterm assets, light tests  
 
-Renderer upgrades (canvas → maybe webgl) only after a real session shows DOM as the bottleneck.
+Renderer upgrades (canvas → maybe webgl) only after a real session shows DOM as the bottleneck.  
+Do not invest in PWA packaging until native SSH is proven.
 
 ---
 
 ## Agent log
 
 Append newest entries at the top.
+
+### 2026-07-20 — Platform targeting clarified
+
+- Confirmed stack is **Expo native (RN)** first-class
+- PWA/web SSH deferred; would be a separate surface with a gateway, not a dual mode of this app
+- Updated STATUS + README wording accordingly
 
 ### 2026-07-19 — Cloud agent “Current project status”
 
